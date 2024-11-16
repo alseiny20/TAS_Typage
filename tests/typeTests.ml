@@ -66,7 +66,6 @@ let test_unification_step_arrow () =
     (Arr (Var_t "T1", Var_t "T2"), Arr (Var_t "T3", Var_t "T4"))
   ] 
   in
-  (* let expected_sub_env = [("T", Nat); ("U", Nat)] in *)
   let res = resolve_with_timeout equations [] 500  in
   match res with
   | Some _ ->  print_endline "test_unification_step_arrow passed"

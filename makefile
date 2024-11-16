@@ -1,6 +1,6 @@
 
 run_tests_ast:
-	ocamlc -o testAst ast.ml structure.ml tests/astTests.ml && ./testAst
+	ocamlc -o testAst structure.ml ast.ml  tests/astTests.ml && ./testAst
 
 run_ast:
 	ocamlc -o ast structure.ml ast.ml  && ./ast

@@ -9,6 +9,7 @@ let rec print_type (t : ptype ) : string =
   | Arr (t1 , t2) -> "(" ^ ( print_type t1) ^" -> "^ ( print_type t2) ^")"
   | Nat -> "nat"
 
+
 (* Fonction pour afficher une équation *)
 let print_equation (t1, t2) : string =
   print_type t1 ^ " = " ^ print_type t2
@@ -144,3 +145,4 @@ let infer_type(env: env) (term : pterm) : (ptype option * equa) =
       let inferred_type = apply_sub_env target_type substitutions in
       (Some inferred_type, equations)  
   | None -> (None, equations) 
+
