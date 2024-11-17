@@ -48,15 +48,81 @@ let generalize (env : env) (ty : ptype) : ptype =
   let free_vars = List.filter (fun x -> not (List.mem x free_vars_in_env)) type_vars in
   List.fold_right (fun x acc -> Forall (x, acc)) free_vars ty
 
+(* Fonction qui génère des équations de typage à partir d'un terme *)
+let rec generate_equa (te : pterm) (ty : ptype) (env : env) : (equa * env) =
+  match te with
+  | Var v -> (
+      match cherche_type v env with
+      | Some ty_var -> ([(ty_var, ty)], env)
+      | None -> failwith ("Variable " ^ v ^ " not found in environment")
+    )
+  | App (t1, t2) ->
+      let ta = Var_t (nouvelle_var_t ()) in
+      let (eqs_t1, env') = generate_equa t1 (Arr (ta, ty)) env in
+      let (eqs_t2, env'') = generate_equa t2 ta env' in
+      (eqs_t1 @ eqs_t2, env'')
+  | Abs (x, t) ->
+      let ta = Var_t (nouvelle_var_t ()) in  
+      let tr = Var_t (nouvelle_var_t ()) in  
+      let env' = (x, ta) :: env in
+      let (eqs_t, env'') = generate_equa t tr env' in
+      ((ty, Arr (ta, tr)) :: eqs_t, env'')
+  | Int _ -> 
+      ([(ty, N)], env)
+  (* | List l -> (
+      let ta = Var_t (nouvelle_var_t ()) in
+      let list_type = List_t ta in
+      match l with
+      | Empty -> ([(ty, list_type)], env)
+      | Cons (hd, tl) -> 
+          let (eqs_hd, env') = generate_equa hd ta env in
+          let (eqs_tl, env'') = generate_equa tl list_type env' in
+          ((ty, list_type) :: eqs_hd @ eqs_tl, env'')
+    ) *)
+  | Head t -> 
+      let ta = Var_t (nouvelle_var_t ()) in
+      let (eqs_t, env') = generate_equa t (List_t ta) env in 
+      ((ty, ta) :: eqs_t, env')  
+  | Tail t -> 
+      let ta = Var_t (nouvelle_var_t ()) in
+      let (eqs_t, env') = generate_equa t (List_t ta) env in 
+      ((ty, List_t ta) :: eqs_t, env')  
+  | IfZero (cond, cons, alt) -> 
+      let (eqs_cond, env') = generate_equa cond N env in 
+      let (eqs_cons, env'') = generate_equa cons ty env' in  
+      let (eqs_alt, env''') = generate_equa alt ty env'' in    
+      ((eqs_cond @ eqs_cons @ eqs_alt), env''')
+  | IfEmpty (cond, cons, alt) -> 
+      let ta = Var_t (nouvelle_var_t ()) in
+      let (eqs_cond, env') = generate_equa cond (List_t ta) env in  
+      let (eqs_cons, env'') = generate_equa cons ty env' in  
+      let (eqs_alt, env''') = generate_equa alt ty env'' in   
+      ((eqs_cond @ eqs_cons @ eqs_alt), env''')
+  (* | Let (x, e1, e2) ->  *)
+   (* let inferredType, _ = infer_type env e1 in
+    match inferredType with
+    | Some ty' -> 
+        let gen = generalize env ty' in
+        let env2 = (x, gen) :: env in
+        generate_equa e2 ty env2
+    | None -> failwith "Type inference failed" *)
+  (* Fix *)
+  | Fix (Abs (phi, m)) ->
+      let t_input = Var_t (nouvelle_var_t ()) in
+      let t_output = Var_t (nouvelle_var_t ()) in
+      let env_extended = (phi, Arr (t_input, t_output)) :: env in
+      let (eqs_m, updated_env) = generate_equa m (Arr (t_input, t_output)) env_extended in
+      ((ty, Arr (t_input, t_output)) :: eqs_m, updated_env)
+      
+  | _ -> failwith "Unsupported term in generate_equa"
+
+
 (* occur check *)
 let rec occur_check (var: string) (typ: ptype) : bool =
   match typ with
   | Var_t x -> x = var
   | Arr (t1, t2) -> occur_check var t1 || occur_check var t2
   | Nat -> false
-  | N-> false
-  | List_t t -> occur_check var t
-  | Forall (var, t) -> occur_check var t
 
 (* Substitution d'une variable de type par un autre type dans un type donné *)
 let rec subst_type (tv : string) (replacement : ptype) (t : ptype) : ptype =
@@ -64,15 +130,12 @@ let rec subst_type (tv : string) (replacement : ptype) (t : ptype) : ptype =
   | Var_t v -> if v = tv then replacement else t  (* Si on trouve la variable tv, on la remplace *)
   | Arr (t1, t2) -> Arr (subst_type tv replacement t1, subst_type tv replacement t2)  (* Appliquer en profondeur *)
   | Nat -> Nat (* on fais rien ici *)
-  | N -> N 
-  | List_t t -> List_t (subst_type tv replacement t)
 
 
 (* Substitution d'une variable de type dans tout un système d'équations *)
 let rec subst_in_system (tv : string) (replacement : ptype) (equations : equa) : equa =
   List.map (fun (t1, t2) -> (subst_type tv replacement  t1, subst_type tv replacement t2)) equations
 
-(* Fonction d'unification pour une étape *)
 (* Fonction d'unification pour une étape *)
 let rec unification_step (eqs : equa) (sub_env : env): (equa * env) =
   match eqs with
@@ -103,42 +166,9 @@ let rec unification_step (eqs : equa) (sub_env : env): (equa * env) =
             (* On ajoute les équations pour les parties gauche et droite *)
             unification_step ((tga, tda) :: (tgr, tdr) :: rest) sub_env
 
-        (* deux types sont des listes *)
-        | List_t t1', List_t t2' ->
-            (* On ajoute une équation pour leurs types internes *)
-            unification_step ((t1', t2') :: rest) sub_env
-
-        (* Si un des types est Forall (quantificateur universel) *)
-        | Forall (var, t1'), t2 ->
-            let t1'_renamed = barendregtisation t1' [] in
-            unification_step ((ouvrir t1'_renamed, t2) :: rest) sub_env
-
-        | t1, Forall (var, t2') ->
-            let t2'_renamed = barendregtisation t2' [] in
-            unification_step ((t1, ouvrir t2'_renamed) :: rest) sub_env
-
         (* Sinon, on échoue *)
         | _ ->   failwith ("Unification échouée: types incompatibles")
       )
-
-(* Fonction auxiliaire pour la barendregtisation *)
-and barendregtisation (t : ptype) (env : (string * string) list) : ptype =
-  match t with
-  | Var_t v -> (try Var_t (List.assoc v env) with Not_found -> Var_t v)
-  | Arr (t1, t2) -> Arr (barendregtisation t1 env, barendregtisation t2 env)
-  | List_t t -> List_t (barendregtisation t env)
-  | Forall (var, t) ->
-      let new_var = nouvelle_var_t () in
-      let env' = (var, new_var) :: env in
-      Forall (new_var, barendregtisation t env')
-  | _ -> t
-  
-
-(* Fonction auxiliaire pour "ouvrir" un type universel *)
-and ouvrir (t : ptype) : ptype =
-  match t with
-  | Forall (var, t) -> subst_type var (Var_t (nouvelle_var_t ())) t
-  | _ -> t
 
 exception Timeout
 
@@ -165,99 +195,7 @@ let rec apply_sub_env (t : ptype) (sub_env : env) : ptype =
   | Nat -> Nat
 (* let infer_type (term : pterm) (env : env) (timeout : int)  *)
 
-(* Fonction qui génère des équations de typage à partir d'un terme *)
-let rec genere_equa (te : pterm) (ty : ptype) (env : env) : equa =
-  match te with
-  (* Cas variable *)
-  | Var v -> (
-      match cherche_type v env with
-      | Some ty_var -> [(ty_var, ty)]  (* Associer le type de la variable avec le type cible *)
-      | None -> failwith ("Variable " ^ v ^ " not found in environment")
-    )
-  (* Cas application *)
-  | App (t1, t2) ->
-      let ta = Var_t (nouvelle_var_t ()) in  (* Nouveau type frais pour l'argument *)
-      let equa_t1 = genere_equa t1 (Arr (ta, ty)) env in
-      let equa_t2 = genere_equa t2 ta env in
-      equa_t1 @ equa_t2  (* Combinaison des équations générées *)
-
-  (* Cas abstraction λx.t *)
-  | Abs (x, t) ->
-      let ta = Var_t (nouvelle_var_t ()) in  
-      let tr = Var_t (nouvelle_var_t ()) in  
-      let equa_abs = [(ty, Arr (ta, tr))] in
-      let equa_t = genere_equa t tr ((x, ta) :: env) in
-      equa_abs @ equa_t  (* Combinaison des équations *)
-
-  (* Cas entier *)
-  | Int _ -> [(ty, N)]
-
-  (* Cas liste vide *)
-  | Nil -> let ta = Var_t (nouvelle_var_t ()) in
-    [(ty, List_t ta)]
-
-  (* Cas addition et soustraction *)
-  | Add (t1, t2) | Sub (t1, t2) ->
-      (ty, N) :: (genere_equa t1 N env @ genere_equa t2 N env)
-
-  (* Cas liste : head *)
-  | Head t ->
-      let ta = Var_t (nouvelle_var_t ()) in
-      let equa_t = genere_equa t (List_t ta) env in
-      (ty, ta) :: equa_t
-
-(* Cas de liste *)
-| List lst ->
-    let ta = Var_t (nouvelle_var_t ()) in
-    (match lst with
-     | Empty -> [(ty, List_t ta)]
-     | Cons (hd, tl) ->
-         let equa_hd = genere_equa hd ta env in
-         let equa_tl = genere_equa (List tl) (List_t ta) env in
-         (ty, List_t ta) :: equa_hd @ equa_tl)
-
-  (* Cas liste : tail *)
-  | Tail t ->
-      let ta = Var_t (nouvelle_var_t ()) in
-      let equa_t = genere_equa t (List_t ta) env in
-      (ty, List_t ta) :: equa_t
-
-  (* Cas condition sur zéro *)
-  | IfZero (cond, cons, alt) ->
-      let equa_cond = genere_equa cond N env in
-      let equa_cons = genere_equa cons ty env in
-      let equa_alt = genere_equa alt ty env in
-      equa_cond @ equa_cons @ equa_alt
-
-  (* Cas condition sur une liste vide *)
-  | IfEmpty (cond, cons, alt) ->
-      let ta = Var_t (nouvelle_var_t ()) in
-      let equa_cond = genere_equa cond (List_t ta) env in
-      let equa_cons = genere_equa cons ty env in
-      let equa_alt = genere_equa alt ty env in
-      equa_cond @ equa_cons @ equa_alt
-
-  (* Cas fixpoint *)
-  | Fix (Abs (phi, m)) ->
-      let t_input = Var_t (nouvelle_var_t ()) in
-      let t_output = Var_t (nouvelle_var_t ()) in
-      let env_extended = (phi, Arr (t_input, t_output)) :: env in
-      let equa_m = genere_equa m (Arr (t_input, t_output)) env_extended in
-      (ty, Arr (t_input, t_output)) :: equa_m
-  
-  | Let (x, e1, e2) ->  
-      let inferredType, _ = infer_type env e1 in
-        match inferredType with
-        | Some ty' -> 
-          let gen = generalize env ty' in
-            let env2 = (x, gen) :: env in
-            genere_equa e2 ty env2
-        | None -> failwith "Type inference failed"
-
-
-  | _ -> failwith "Unsupported term in genere_equa"
-
-and infer_type(env: env) (term : pterm) : (ptype option * equa) =
+let infer_type(env: env) (term : pterm) : (ptype option * equa) =
   let target_type = Var_t (nouvelle_var_t ()) in
   let equations = genere_equa term target_type env in
   match resolve_with_timeout equations [] 500 with

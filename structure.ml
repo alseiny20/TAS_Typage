@@ -21,6 +21,9 @@ type pterm =
 type ptype = Var_t of string 
             | Arr of ptype * ptype
             | Nat 
+            | N
+            | List_t of ptype             
+            | Forall of string * ptype    
 
 type equa = ( ptype * ptype ) list
 
