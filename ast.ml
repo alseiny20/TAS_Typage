@@ -196,6 +196,10 @@ match t with
 | Var _ -> true
 | App (Var x, t2) -> is_value t2
 | Abs (_, _) -> true
+| Int _ -> true 
+| List _ -> true
+| Cons (t1, t2) when is_value t1 && is_value t2 -> true
+| Nil -> true
 | _ -> false
 
 
@@ -234,6 +238,13 @@ let rec ltr_ctb_step (t : pterm) : pterm option =
       (match ltr_ctb_step t1 with
        | Some t1' -> Some (Sub (t1', t2))
        | None -> None)
+  | Fix (Abs (x, body)) ->
+      let body' = substitution x (Fix (Abs (x, body))) body in
+      Some body'
+  | Fix m ->
+      (match ltr_ctb_step m with
+       | Some m' -> Some (Fix m')
+       | None -> failwith "Fix should be an abstraction")
   | Cons (t1, t2) when is_value t1 ->
       (match ltr_ctb_step t2 with
        | Some t2' -> Some (Cons (t1, t2'))
@@ -271,7 +282,6 @@ let rec ltr_ctb_step (t : pterm) : pterm option =
       (match ltr_ctb_step t1 with
        | Some t1' -> Some (IfEmpty (t1', t2, t3))
        | None -> None)
-  | Fix (Abs (x, t)) -> Some (substitution x t t)
   | Let (x, t1, t2) when is_value t1 ->
       Some (substitution x t1 t2)
   | Let (x, t1, t2) ->
@@ -280,16 +290,16 @@ let rec ltr_ctb_step (t : pterm) : pterm option =
        | None -> None)
   | _ -> None
 
-and ltr_ctb_step_list (l : pterm listStand) : pterm listStand option =
-  match l with
-  | Empty -> None
-  | Cons (t, ts) -> (
-      match ltr_ctb_step t with
-      | Some t' -> Some (Cons (t', ts))
-      | None -> (
-          match ltr_ctb_step_list ts with
-          | Some ts' -> Some (Cons (t, ts'))
-          | None -> None))
+  and ltr_ctb_step_list (l : pterm listStand) : pterm listStand option =
+    match l with
+    | Empty -> None
+    | Cons (t, ts) -> (
+        match ltr_ctb_step t with
+        | Some t' -> Some (Cons (t', ts))
+        | None -> (
+            match ltr_ctb_step_list ts with
+            | Some ts' -> Some (Cons (t, ts'))
+            | None -> None))
   
             
 (* Fonction de réduction Call-by-Value avec limitation d'étapes *)
@@ -298,68 +308,75 @@ let rec ltr_ctb_step_with_limit (t : pterm) : pterm option =
   | Var _ -> None
   | Abs (x, t1) ->
       (match ltr_ctb_step_with_limit t1 with
-       | Some t1' -> Some (Abs (x, t1'))
+       | Some t1' -> Some (Abs (x, simplify_term_with_limit t1' 4))
        | None -> None)
   | App (Abs (x, t1), v2) when is_value v2 ->
-      Some (simplify_term_with_limit (substitution x v2 t1) 4) (* Limite fixée à 4 *)
+      Some (simplify_term_with_limit (substitution x v2 t1) 4)
   | App (t1, t2) ->
       (match ltr_ctb_step_with_limit t1 with
-       | Some t1' -> Some (App (t1', t2))
+       | Some t1' -> Some (App (simplify_term_with_limit t1' 4, t2))
        | None ->
            (match ltr_ctb_step_with_limit t2 with
-            | Some t2' -> Some (App (t1, t2'))
+            | Some t2' -> Some (App (t1, simplify_term_with_limit t2' 4))
             | None -> None))
   | Int _ -> None
   | Add (Int n1, Int n2) -> Some (Int (n1 + n2))
   | Add (t1, t2) when is_value t1 ->
       (match ltr_ctb_step_with_limit t2 with
-       | Some t2' -> Some (Add (t1, t2'))
+       | Some t2' -> Some (Add (t1, simplify_term_with_limit t2' 4))
        | None -> None)
   | Add (t1, t2) ->
       (match ltr_ctb_step_with_limit t1 with
-       | Some t1' -> Some (Add (t1', t2))
+       | Some t1' -> Some (Add (simplify_term_with_limit t1' 4, t2))
        | None -> None)
   | Sub (Int n1, Int n2) -> Some (Int (n1 - n2))
   | Sub (t1, t2) when is_value t1 ->
       (match ltr_ctb_step_with_limit t2 with
-       | Some t2' -> Some (Sub (t1, t2'))
+       | Some t2' -> Some (Sub (t1, simplify_term_with_limit t2' 4))
        | None -> None)
   | Sub (t1, t2) ->
       (match ltr_ctb_step_with_limit t1 with
-       | Some t1' -> Some (Sub (t1', t2))
+       | Some t1' -> Some (Sub (simplify_term_with_limit t1' 4, t2))
        | None -> None)
+  | Fix (Abs (x, body)) ->
+      let body' = substitution x (Fix (Abs (x, body))) body in
+      Some (simplify_term_with_limit body' 4)
+  | Fix m ->
+      (match ltr_ctb_step_with_limit m with
+       | Some m' -> Some (simplify_term_with_limit (Fix m') 4)
+       | None -> failwith "Fix should be an abstraction")
   | Cons (t1, t2) when is_value t1 ->
       (match ltr_ctb_step_with_limit t2 with
-       | Some t2' -> Some (Cons (t1, t2'))
+       | Some t2' -> Some (Cons (t1, simplify_term_with_limit t2' 4))
        | None -> None)
   | Cons (t1, t2) ->
       (match ltr_ctb_step_with_limit t1 with
-       | Some t1' -> Some (Cons (t1', t2))
+       | Some t1' -> Some (Cons (simplify_term_with_limit t1' 4, t2))
        | None -> None)
   | List l -> (
       match ltr_ctb_step_list_limited l with
       | Some l' -> Some (List l')
       | None -> None)
-  | Head (List (Cons (t1, _))) -> Some t1
-  | Tail (List (Cons (_, t2))) -> Some (List t2)
+  | Head (List (Cons (t1, _))) -> Some (simplify_term_with_limit t1 4)
+  | Tail (List (Cons (_, t2))) -> Some (List (simplify_list_with_limit t2 4))
   | Let (x, t1, t2) when is_value t1 ->
-      Some (simplify_term_with_limit (substitution x t1 t2) 4) (* Limite fixée à 4 *)
+      Some (simplify_term_with_limit (substitution x t1 t2) 4)
   | Let (x, t1, t2) ->
       (match ltr_ctb_step_with_limit t1 with
-       | Some t1' -> Some (Let (x, t1', t2))
+       | Some t1' -> Some (Let (x, simplify_term_with_limit t1' 4, t2))
        | None -> None)
   | _ -> None
 
-and ltr_ctb_step_list_limited (l : pterm listStand) : pterm listStand option =
-  match l with
-  | Empty -> None
-  | Cons (t, ts) -> (
-      match ltr_ctb_step_with_limit t with
-      | Some t' -> Some (Cons (t', ts))
-      | None -> (
-          match ltr_ctb_step_list_limited ts with
-          | Some ts' -> Some (Cons (t, ts'))
-          | None -> None))
+  and ltr_ctb_step_list_limited (l : pterm listStand) : pterm listStand option =
+    match l with
+    | Empty -> None
+    | Cons (t, ts) -> (
+        match ltr_ctb_step_with_limit t with
+        | Some t' -> Some (Cons (t', ts))
+        | None -> (
+            match ltr_ctb_step_list_limited ts with
+            | Some ts' -> Some (Cons (t, ts'))
+            | None -> None))
 
 let rec ltr_cbv_norm (t : pterm) : pterm =
   match ltr_ctb_step t with
