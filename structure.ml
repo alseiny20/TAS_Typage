@@ -29,10 +29,24 @@ type ptype = Var_t of string
             | List_t of ptype             
             | Forall of string list * ptype    
             | Unit_t
-            | Ref_t of pterm
+            | Ref_t of ptype
 
 type equa = ( ptype * ptype ) list
 
 type env = ( string * ptype ) list
 
-exception Unification_Failed of string
+(* Exceptions déclarées pour les erreurs pertinentes *)
+exception InvalidFixApplication of string
+(* Levée lorsque Fix est appliqué à autre chose qu'une abstraction *)
+
+exception VariableNotFound of string
+(* Levée lorsqu'une variable n'est pas trouvée dans l'environnement *)
+
+exception TypeInferenceFailed of string
+(* Levée lorsque l'inférence de type échoue pour une expression *)
+
+exception UnsupportedTerm of string
+(* Levée lorsqu'un terme non pris en charge est rencontré dans une fonction *)
+
+exception OutOfReductionSteps of string
+(* Levée lorsqu'une limite de réduction est atteinte *)

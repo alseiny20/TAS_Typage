@@ -269,7 +269,7 @@ let rec ltr_ctb_step (t : pterm) : pterm option =
     | Fix m ->
         (match ltr_ctb_step m with
         | Some m' -> Some (Fix m')
-        | None -> failwith "Fix should be an abstraction")
+        | None -> raise (InvalidFixApplication "Fix should be an abstraction"))
     | Cons (t1, t2) when is_value t1 ->
         (match ltr_ctb_step t2 with
         | Some t2' -> Some (Cons (t1, t2'))
@@ -388,7 +388,7 @@ let rec ltr_ctb_step_with_limit (t : pterm) : pterm option =
   | Fix m ->
       (match ltr_ctb_step_with_limit m with
        | Some m' -> Some (simplify_term_with_limit (Fix m') 4)
-       | None -> failwith "Fix should be an abstraction")
+       | None -> raise (InvalidFixApplication "Fix should be an abstraction"))
   | Cons (t1, t2) when is_value t1 ->
       (match ltr_ctb_step_with_limit t2 with
        | Some t2' -> Some (Cons (t1, simplify_term_with_limit t2' 4))
