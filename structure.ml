@@ -16,14 +16,17 @@ type pterm =
   | IfEmpty of pterm * pterm * pterm
   | Fix of pterm
   | Let of string * pterm * pterm
-
+  | Unit
+  | Ref of pterm
 
 type ptype = Var_t of string 
             | Arr of ptype * ptype
             | Nat 
-            | N
+            | N 
             | List_t of ptype             
-            | Forall of string * ptype    
+            | Forall of string list * ptype    
+            | Unit_t
+            | Ref_t of pterm
 
 type equa = ( ptype * ptype ) list
 

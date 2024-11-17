@@ -9,7 +9,10 @@ let rec print_type (t : ptype) : string =
   | Nat -> "Nat"  
   | N -> "N"
   | List_t t -> "[" ^ print_type t ^ "]"
-  | Forall (x, t) -> "∀" ^ x ^ ".(" ^ print_type t ^ ")"
+  (* | Forall (x, t) -> "∀" ^ x ^ ".(" ^ print_type t ^ ")" *)
+  | Forall (vars, t) ->
+      let vars_str = String.concat ", " vars in
+      "∀(" ^ vars_str ^ ").(" ^ print_type t ^ ")"
 
 (* Fonction pour afficher une équation *)
 let print_equation (t1, t2) : string =
@@ -39,14 +42,15 @@ let rec free_vars_t (t : ptype) : string list =
   | Nat -> []
   | N -> []
   | List_t t -> free_vars_t t
-  | Forall (var, t) -> List.filter (fun v -> v <> var) (free_vars_t t)
-
+  | Forall (vars, t) -> 
+    let free_in_t = free_vars_t t in
+    List.filter (fun v -> not (List.mem v vars)) free_in_t
 (* Généralisation d'un type *)
 let generalize (env : env) (ty : ptype) : ptype =
   let type_vars = free_vars_t ty in
   let free_vars_in_env = List.flatten (List.map (fun (_, t) -> free_vars_t t) env) in
   let free_vars = List.filter (fun x -> not (List.mem x free_vars_in_env)) type_vars in
-  List.fold_right (fun x acc -> Forall (x, acc)) free_vars ty
+  Forall (free_vars, ty)
 
 (* occur check *)
 let rec occur_check (var: string) (typ: ptype) : bool =
@@ -56,7 +60,7 @@ let rec occur_check (var: string) (typ: ptype) : bool =
   | Nat -> false
   | N-> false
   | List_t t -> occur_check var t
-  | Forall (var, t) -> occur_check var t
+  | Forall (vars, t) -> not (List.mem var vars) && occur_check var t
 
 (* Substitution d'une variable de type par un autre type dans un type donné *)
 let rec subst_type (tv : string) (replacement : ptype) (t : ptype) : ptype =
@@ -72,7 +76,6 @@ let rec subst_type (tv : string) (replacement : ptype) (t : ptype) : ptype =
 let rec subst_in_system (tv : string) (replacement : ptype) (equations : equa) : equa =
   List.map (fun (t1, t2) -> (subst_type tv replacement  t1, subst_type tv replacement t2)) equations
 
-(* Fonction d'unification pour une étape *)
 (* Fonction d'unification pour une étape *)
 let rec unification_step (eqs : equa) (sub_env : env): (equa * env) =
   match eqs with
@@ -124,20 +127,33 @@ let rec unification_step (eqs : equa) (sub_env : env): (equa * env) =
 (* Fonction auxiliaire pour la barendregtisation *)
 and barendregtisation (t : ptype) (env : (string * string) list) : ptype =
   match t with
-  | Var_t v -> (try Var_t (List.assoc v env) with Not_found -> Var_t v)
-  | Arr (t1, t2) -> Arr (barendregtisation t1 env, barendregtisation t2 env)
-  | List_t t -> List_t (barendregtisation t env)
-  | Forall (var, t) ->
-      let new_var = nouvelle_var_t () in
-      let env' = (var, new_var) :: env in
-      Forall (new_var, barendregtisation t env')
+  | Var_t v -> 
+      (match List.assoc_opt v env with
+       | Some new_v -> Var_t new_v
+       | None -> Var_t v)
+  | Arr (t1, t2) -> 
+      let t1' = barendregtisation t1 env in
+      let t2' = barendregtisation t2 env in
+      Arr (t1', t2')
+  | List_t t -> 
+      let t' = barendregtisation t env in
+      List_t t'
+  | Forall (vars, t') ->
+      (* Générer un nouveau mapping pour les variables liées *)
+      let new_bindings = List.map (fun var -> (var, nouvelle_var_t ())) vars in
+      let updated_env = new_bindings @ env in
+      let renamed_vars = List.map snd new_bindings in
+      let renamed_type = barendregtisation t' updated_env in
+      Forall (renamed_vars, renamed_type)
   | _ -> t
-  
 
-(* Fonction auxiliaire pour "ouvrir" un type universel *)
+(* ouvre un typye *)
 and ouvrir (t : ptype) : ptype =
   match t with
-  | Forall (var, t) -> subst_type var (Var_t (nouvelle_var_t ())) t
+  | Forall (vars, t') -> 
+      let renamed_type = List.fold_left 
+        (fun acc var -> subst_type var (Var_t (nouvelle_var_t ())) acc) t' vars in
+      renamed_type
   | _ -> t
 
 exception Timeout
@@ -253,8 +269,6 @@ let rec genere_equa (te : pterm) (ty : ptype) (env : env) : equa =
             let env2 = (x, gen) :: env in
             genere_equa e2 ty env2
         | None -> failwith "Type inference failed"
-
-
   | _ -> failwith "Unsupported term in genere_equa"
 
 and infer_type(env: env) (term : pterm) : (ptype option * equa) =
