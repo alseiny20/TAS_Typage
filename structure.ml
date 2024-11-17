@@ -1,5 +1,5 @@
+(* liste standard *)
 type 'a listStand = Empty | Cons of 'a * 'a listStand
-
 type pterm = 
   | Var of string
   | App of pterm * pterm
