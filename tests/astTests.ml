@@ -1,7 +1,7 @@
 open Structure
 open Ast
 
-
+(* j'ai utuliser chatGpt pour cette fonction *)
 (* Fonction qui traduit un entier Church en entier normale *)
 let church_to_int (n : pterm) : int =
   let rec apply_church church_num =

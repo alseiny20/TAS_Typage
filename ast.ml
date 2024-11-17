@@ -293,102 +293,73 @@ and ltr_ctb_step_list (l : pterm listStand) : pterm listStand option =
   
             
 (* Fonction de réduction Call-by-Value avec limitation d'étapes *)
-let rec ltr_ctb_step_with_limit (t : pterm) (limit : int) : pterm option =
-  if limit <= 0 then
-    None (* Arrêter si la limite est atteinte *)
-  else
-    match t with
-    | Var _ -> None
-    | Abs (x, t1) ->
-        (match ltr_ctb_step_with_limit t1 (limit - 1) with
-         | Some t1' -> Some (Abs (x, t1'))
-         | None -> None)
-    | App (Abs (x, t1), v2) when is_value v2 ->
-        Some (simplify_term_with_limit (substitution x v2 t1) (limit - 1))
-    | App (t1, t2) ->
-        (match ltr_ctb_step_with_limit t1 (limit - 1) with
-         | Some t1' -> Some (App (t1', t2))
-         | None ->
-             (match ltr_ctb_step_with_limit t2 (limit - 1) with
-              | Some t2' -> Some (App (t1, t2'))
-              | None -> None))
-    | Int _ -> None
-    | Add (Int n1, Int n2) -> Some (Int (n1 + n2))
-    | Add (t1, t2) when is_value t1 ->
-        (match ltr_ctb_step_with_limit t2 (limit - 1) with
-         | Some t2' -> Some (Add (t1, t2'))
-         | None -> None)
-    | Add (t1, t2) ->
-        (match ltr_ctb_step_with_limit t1 (limit - 1) with
-         | Some t1' -> Some (Add (t1', t2))
-         | None -> None)
-    | Sub (Int n1, Int n2) -> Some (Int (n1 - n2))
-    | Sub (t1, t2) when is_value t1 ->
-        (match ltr_ctb_step_with_limit t2 (limit - 1) with
-         | Some t2' -> Some (Sub (t1, t2'))
-         | None -> None)
-    | Sub (t1, t2) ->
-        (match ltr_ctb_step_with_limit t1 (limit - 1) with
-         | Some t1' -> Some (Sub (t1', t2))
-         | None -> None)
-    | Cons (t1, t2) when is_value t1 ->
-        (match ltr_ctb_step_with_limit t2 (limit - 1) with
-         | Some t2' -> Some (Cons (t1, t2'))
-         | None -> None)
-    | Cons (t1, t2) ->
-        (match ltr_ctb_step_with_limit t1 (limit - 1) with
-         | Some t1' -> Some (Cons (t1', t2))
-         | None -> None)
-    | List l -> (
-        match ltr_ctb_step_list_limited l (limit - 1) with
-        | Some l' -> Some (List l')
-        | None -> None)
-    | Head (List (Cons (t1, _))) -> Some t1
-    | Head (List Empty) -> None
-    | Head t ->
-        (match ltr_ctb_step_with_limit t (limit - 1) with
-         | Some t' -> Some (Head t')
-         | None -> None)
-    | Tail (List (Cons (_, t2))) -> Some (List t2)
-    | Tail (List Empty) -> None
-    | Tail t ->
-        (match ltr_ctb_step_with_limit t (limit - 1) with
-         | Some t' -> Some (Tail t')
-         | None -> None)
-    | IfZero (Int 0, t2, _) -> Some t2
-    | IfZero (Int _, _, t3) -> Some t3
-    | IfZero (t1, t2, t3) ->
-        (match ltr_ctb_step_with_limit t1 (limit - 1) with
-         | Some t1' -> Some (IfZero (t1', t2, t3))
-         | None -> None)
-    | IfEmpty (List Empty, t2, _) -> Some t2
-    | IfEmpty (List (Cons _), _, t3) -> Some t3
-    | IfEmpty (t1, t2, t3) ->
-        (match ltr_ctb_step_with_limit t1 (limit - 1) with
-         | Some t1' -> Some (IfEmpty (t1', t2, t3))
-         | None -> None)
-    | Fix (Abs (x, t)) -> Some (substitution x t t)
-    | Let (x, t1, t2) when is_value t1 ->
-        Some (simplify_term_with_limit (substitution x t1 t2) (limit - 1))
-    | Let (x, t1, t2) ->
-        (match ltr_ctb_step_with_limit t1 (limit - 1) with
-         | Some t1' -> Some (Let (x, t1', t2))
-         | None -> None)
-    | _ -> None
-
-and ltr_ctb_step_list_limited (l : pterm listStand) (limit : int) : pterm listStand option =
-  if limit <= 0 then None (* Arrêter si la limite est atteinte *)
-  else
-    match l with
-    | Empty -> None
-    | Cons (t, ts) -> (
-        match ltr_ctb_step_with_limit t (limit - 1) with
-        | Some t' -> Some (Cons (t', ts))
-        | None -> (
-            match ltr_ctb_step_list_limited ts (limit - 1) with
-            | Some ts' -> Some (Cons (t, ts'))
+let rec ltr_ctb_step_with_limit (t : pterm) : pterm option =
+  match t with
+  | Var _ -> None
+  | Abs (x, t1) ->
+      (match ltr_ctb_step_with_limit t1 with
+       | Some t1' -> Some (Abs (x, t1'))
+       | None -> None)
+  | App (Abs (x, t1), v2) when is_value v2 ->
+      Some (simplify_term_with_limit (substitution x v2 t1) 4) (* Limite fixée à 4 *)
+  | App (t1, t2) ->
+      (match ltr_ctb_step_with_limit t1 with
+       | Some t1' -> Some (App (t1', t2))
+       | None ->
+           (match ltr_ctb_step_with_limit t2 with
+            | Some t2' -> Some (App (t1, t2'))
             | None -> None))
+  | Int _ -> None
+  | Add (Int n1, Int n2) -> Some (Int (n1 + n2))
+  | Add (t1, t2) when is_value t1 ->
+      (match ltr_ctb_step_with_limit t2 with
+       | Some t2' -> Some (Add (t1, t2'))
+       | None -> None)
+  | Add (t1, t2) ->
+      (match ltr_ctb_step_with_limit t1 with
+       | Some t1' -> Some (Add (t1', t2))
+       | None -> None)
+  | Sub (Int n1, Int n2) -> Some (Int (n1 - n2))
+  | Sub (t1, t2) when is_value t1 ->
+      (match ltr_ctb_step_with_limit t2 with
+       | Some t2' -> Some (Sub (t1, t2'))
+       | None -> None)
+  | Sub (t1, t2) ->
+      (match ltr_ctb_step_with_limit t1 with
+       | Some t1' -> Some (Sub (t1', t2))
+       | None -> None)
+  | Cons (t1, t2) when is_value t1 ->
+      (match ltr_ctb_step_with_limit t2 with
+       | Some t2' -> Some (Cons (t1, t2'))
+       | None -> None)
+  | Cons (t1, t2) ->
+      (match ltr_ctb_step_with_limit t1 with
+       | Some t1' -> Some (Cons (t1', t2))
+       | None -> None)
+  | List l -> (
+      match ltr_ctb_step_list_limited l with
+      | Some l' -> Some (List l')
+      | None -> None)
+  | Head (List (Cons (t1, _))) -> Some t1
+  | Tail (List (Cons (_, t2))) -> Some (List t2)
+  | Let (x, t1, t2) when is_value t1 ->
+      Some (simplify_term_with_limit (substitution x t1 t2) 4) (* Limite fixée à 4 *)
+  | Let (x, t1, t2) ->
+      (match ltr_ctb_step_with_limit t1 with
+       | Some t1' -> Some (Let (x, t1', t2))
+       | None -> None)
+  | _ -> None
 
+and ltr_ctb_step_list_limited (l : pterm listStand) : pterm listStand option =
+  match l with
+  | Empty -> None
+  | Cons (t, ts) -> (
+      match ltr_ctb_step_with_limit t with
+      | Some t' -> Some (Cons (t', ts))
+      | None -> (
+          match ltr_ctb_step_list_limited ts with
+          | Some ts' -> Some (Cons (t, ts'))
+          | None -> None))
 
 let rec ltr_cbv_norm (t : pterm) : pterm =
   match ltr_ctb_step t with
@@ -399,10 +370,10 @@ let rec ltr_cbv_norm (t : pterm) : pterm =
 let rec ltr_cbv_norm_with_timeout (t : pterm) (max_steps : int) : pterm =
   let rec normalize_with_limit (term : pterm) (current_limit : int) : pterm option =
     if current_limit <= 0 then (
-      print_endline ("Ce terme ne converge pas en " ^ string_of_int max_steps ^ " réductions");
-      None (* Retourne None si la limite est atteinte *)
+      print_endline ("Ce terme ne converse pas en " ^ string_of_int max_steps ^ " reductions");
+      Some term  (* Retourne le terme non réduit sans lever d'erreur *)
     ) else
-      match ltr_ctb_step_with_limit term 4 with (* Limite fixée à 4 pour simplify_term_with_limit *)
+      match ltr_ctb_step_with_limit term with
       | Some next_term -> normalize_with_limit next_term (current_limit - 1)
       | None -> Some term
   in
