@@ -13,6 +13,8 @@ let rec print_type (t : ptype) : string =
   | Forall (vars, t) ->
       let vars_str = String.concat ", " vars in
       "∀(" ^ vars_str ^ ").(" ^ print_type t ^ ")"
+  | Unit_t -> "Unit"
+  | Ref_t t -> "Ref(" ^ print_type t ^ ")"
 
 (* Fonction pour afficher une équation *)
 let print_equation (t1, t2) : string =
@@ -45,6 +47,9 @@ let rec free_vars_t (t : ptype) : string list =
   | Forall (vars, t) -> 
     let free_in_t = free_vars_t t in
     List.filter (fun v -> not (List.mem v vars)) free_in_t
+  | Unit_t -> []
+  | Ref_t t -> free_vars_t t
+
 (* Généralisation d'un type *)
 let generalize (env : env) (ty : ptype) : ptype =
   let type_vars = free_vars_t ty in
@@ -61,6 +66,8 @@ let rec occur_check (var: string) (typ: ptype) : bool =
   | N-> false
   | List_t t -> occur_check var t
   | Forall (vars, t) -> not (List.mem var vars) && occur_check var t
+  | Unit_t -> false
+  | Ref_t t -> occur_check var t
 
 (* Substitution d'une variable de type par un autre type dans un type donné *)
 let rec subst_type (tv : string) (replacement : ptype) (t : ptype) : ptype =
@@ -70,6 +77,9 @@ let rec subst_type (tv : string) (replacement : ptype) (t : ptype) : ptype =
   | Nat -> Nat (* on fais rien ici *)
   | N -> N 
   | List_t t -> List_t (subst_type tv replacement t)
+  | Forall (vars, t) -> Forall (vars, subst_type tv replacement t)  (* Appliquer en profondeur *)
+  | Unit_t -> Unit_t
+  | Ref_t t -> Ref_t (subst_type tv replacement t)
 
 
 (* Substitution d'une variable de type dans tout un système d'équations *)
@@ -119,7 +129,10 @@ let rec unification_step (eqs : equa) (sub_env : env): (equa * env) =
         | t1, Forall (var, t2') ->
             let t2'_renamed = barendregtisation t2' [] in
             unification_step ((t1, ouvrir t2'_renamed) :: rest) sub_env
+        | (Unit_t, Unit_t ) -> unification_step rest sub_env
+        | (Ref_t t1, Ref_t t2) -> unification_step ((t1, t2) :: rest) sub_env
 
+            
         (* Sinon, on échoue *)
         | _ ->   failwith ("Unification échouée: types incompatibles")
       )
@@ -138,8 +151,8 @@ and barendregtisation (t : ptype) (env : (string * string) list) : ptype =
   | List_t t -> 
       let t' = barendregtisation t env in
       List_t t'
+      
   | Forall (vars, t') ->
-      (* Générer un nouveau mapping pour les variables liées *)
       let new_bindings = List.map (fun var -> (var, nouvelle_var_t ())) vars in
       let updated_env = new_bindings @ env in
       let renamed_vars = List.map snd new_bindings in
@@ -211,6 +224,8 @@ let rec genere_equa (te : pterm) (ty : ptype) (env : env) : equa =
   (* Cas liste vide *)
   | Nil -> let ta = Var_t (nouvelle_var_t ()) in
     [(ty, List_t ta)]
+  
+  | N -> [(ty, N)]
 
   (* Cas addition et soustraction *)
   | Add (t1, t2) | Sub (t1, t2) ->
@@ -269,6 +284,19 @@ let rec genere_equa (te : pterm) (ty : ptype) (env : env) : equa =
             let env2 = (x, gen) :: env in
             genere_equa e2 ty env2
         | None -> failwith "Type inference failed"
+
+  | Ref e -> 
+      let ty_cbl = Var_t (nouvelle_var_t ()) in   
+      (ty, Ref_t ty_cbl) :: (genere_equa e ty_cbl env)
+  | Unit -> [(ty, Unit_t)]
+  | Dref e -> 
+      let ty_cbl = Var_t (nouvelle_var_t ()) in
+      (ty, ty_cbl) :: (genere_equa e ty_cbl env)
+  | Address _ -> [(ty, N)]
+  | Assign (t1, t2) ->
+      let ty_cbl = Var_t (nouvelle_var_t ()) in
+      (ty, Unit_t) :: (genere_equa t1 (Ref_t ty_cbl) env) @ (genere_equa t2 ty_cbl env)
+  
   | _ -> failwith "Unsupported term in genere_equa"
 
 and infer_type(env: env) (term : pterm) : (ptype option * equa) =

@@ -18,6 +18,9 @@ type pterm =
   | Let of string * pterm * pterm
   | Unit
   | Ref of pterm
+  | Deref of pterm        
+  | Assign of pterm * pterm 
+  | Adresse of int         
 
 type ptype = Var_t of string 
             | Arr of ptype * ptype
@@ -32,3 +35,4 @@ type equa = ( ptype * ptype ) list
 
 type env = ( string * ptype ) list
 
+exception Unification_Failed of string

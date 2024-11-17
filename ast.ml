@@ -1,28 +1,34 @@
 open Structure
 
 let rec print_term (t : pterm) : string =
-  match t with
-  | Var x -> x
-  | App (t1, t2) -> "(" ^ (print_term t1) ^ " " ^ (print_term t2) ^ ")"
-  | Abs (x, t) -> "(fun " ^ x ^ " -> " ^ (print_term t) ^ ")"
-  | Int n -> string_of_int n
-  | Nil -> "Nil"
-  | List l -> print_term_list l
-  | Add (t1, t2) -> "(" ^ (print_term t1) ^ " + " ^ (print_term t2) ^ ")"
-  | Sub (t1, t2) -> "(" ^ (print_term t1) ^ " - " ^ (print_term t2) ^ ")"
-  | Cons (head, tail) -> "(cons " ^ (print_term head) ^ " " ^ (print_term tail) ^ ")"
-  | Head t -> "(head " ^ (print_term t) ^ ")"
-  | Tail t -> "(tail " ^ (print_term t) ^ ")"
-  | IfZero (t1, t2, t3) -> "(if zero " ^ (print_term t1) ^ " then " ^ (print_term t2) ^ " else " ^ (print_term t3) ^ ")"
-  | IfEmpty (t1, t2, t3) -> "(if empty " ^ (print_term t1) ^ " then " ^ (print_term t2) ^ " else " ^ (print_term t3) ^ ")"
-  | Fix t -> "(fix " ^ (print_term t) ^ ")"
-  | Let (x, t1, t2) -> "(let " ^ x ^ " = " ^ (print_term t1) ^ " in " ^ (print_term t2) ^ ")"
-  and print_term_list (l : pterm listStand) : string =
+    match t with
+    | Var x -> x
+    | App (t1, t2) -> "(" ^ (print_term t1) ^ " " ^ (print_term t2) ^ ")"
+    | Abs (x, t) -> "(fun " ^ x ^ " -> " ^ (print_term t) ^ ")"
+    | Int n -> string_of_int n
+    | Nil -> "Nil"
+    | List l -> print_term_list l
+    | Add (t1, t2) -> "(" ^ (print_term t1) ^ " + " ^ (print_term t2) ^ ")"
+    | Sub (t1, t2) -> "(" ^ (print_term t1) ^ " - " ^ (print_term t2) ^ ")"
+    | Cons (head, tail) -> "(cons " ^ (print_term head) ^ " " ^ (print_term tail) ^ ")"
+    | Head t -> "(head " ^ (print_term t) ^ ")"
+    | Tail t -> "(tail " ^ (print_term t) ^ ")"
+    | IfZero (t1, t2, t3) -> "(if zero " ^ (print_term t1) ^ " then " ^ (print_term t2) ^ " else " ^ (print_term t3) ^ ")"
+    | IfEmpty (t1, t2, t3) -> "(if empty " ^ (print_term t1) ^ " then " ^ (print_term t2) ^ " else " ^ (print_term t3) ^ ")"
+    | Fix t -> "(fix " ^ (print_term t) ^ ")"
+    | Let (x, t1, t2) -> "(let " ^ x ^ " = " ^ (print_term t1) ^ " in " ^ (print_term t2) ^ ")"
+    | Unit -> "Unit"
+    | Ref t -> "(ref " ^ (print_term t) ^ ")"
+    | Deref t -> "(!" ^ (print_term t) ^ ")"
+    | Assign (t1, t2) -> "(" ^ (print_term t1) ^ " := " ^ (print_term t2) ^ ")"
+    | Adresse n -> "Adresse " ^ (string_of_int n)
+    and print_term_list (l : pterm listStand) : string =
     match l with
-      Empty -> ""
-      | Cons (t, Empty) -> print_term t
-      | Cons (t, l) -> (print_term t) ^ "; " ^ (print_term_list l)
-      
+        Empty -> ""
+        | Cons (t, Empty) -> print_term t
+        | Cons (t, l) -> (print_term t) ^ "; " ^ (print_term_list l)
+    
+
 let compteur_var : int ref = ref 0
 
 let nouvelle_var () : string =
@@ -54,6 +60,11 @@ let nouvelle_var () : string =
     | Let (x, t1, t2) ->
         let new_var = nouvelle_var () in
         Let (new_var, alphaconv t1 annuaire, alphaconv t2 ((x, new_var) :: annuaire))
+    | Unit -> Unit
+    | Ref t -> Ref (alphaconv t annuaire)
+    | Deref t -> Deref (alphaconv t annuaire)
+    | Assign (t1, t2) -> Assign (alphaconv t1 annuaire, alphaconv t2 annuaire)
+    | Adresse n -> Adresse n
   
   and alphaconv_list (lst : pterm listStand) (annuaire : (string * string) list) : pterm listStand =
     match lst with
@@ -63,62 +74,69 @@ let nouvelle_var () : string =
 
 (* 4 fonction de substitution *)
 let rec free_vars (t : pterm) : string list =
-  match t with
-  | Var x -> [x]
-  | Abs (x, body) -> List.filter (fun v -> v <> x) (free_vars body)
-  | App (t1, t2) -> free_vars t1 @ free_vars t2
-  | Int _ -> []
-  | Nil -> []
-  | List l -> free_vars_list l
-  | Add (t1, t2) -> free_vars t1 @ free_vars t2
-  | Sub (t1, t2) -> free_vars t1 @ free_vars t2
-  | Cons (head, tail) -> free_vars head @ free_vars tail
-  | Head t -> free_vars t
-  | Tail t -> free_vars t
-  | IfZero (t1, t2, t3) -> free_vars t1 @ free_vars t2 @ free_vars t3
-  | IfEmpty (t1, t2, t3) -> free_vars t1 @ free_vars t2 @ free_vars t3
-  | Fix (Abs (f, body)) -> List.filter (fun v -> v <> f) (free_vars body)
-  | Let (x, t1, t2) -> free_vars t1 @ List.filter (fun v -> v <> x) (free_vars t2)
-  and free_vars_list (l: pterm listStand) : string list =
-    match l with 
-    |Empty -> []
-    |Cons (head,tail)-> (free_vars head) @ (free_vars_list tail) 
+    match t with
+    | Var x -> [x]
+    | Abs (x, body) -> List.filter (fun v -> v <> x) (free_vars body)
+    | App (t1, t2) -> free_vars t1 @ free_vars t2
+    | Int _ -> []
+    | Nil -> []
+    | List l -> free_vars_list l
+    | Add (t1, t2) -> free_vars t1 @ free_vars t2
+    | Sub (t1, t2) -> free_vars t1 @ free_vars t2
+    | Cons (head, tail) -> free_vars head @ free_vars tail
+    | Head t -> free_vars t
+    | Tail t -> free_vars t
+    | IfZero (t1, t2, t3) -> free_vars t1 @ free_vars t2 @ free_vars t3
+    | IfEmpty (t1, t2, t3) -> free_vars t1 @ free_vars t2 @ free_vars t3
+    | Fix (Abs (f, body)) -> List.filter (fun v -> v <> f) (free_vars body)
+    | Let (x, t1, t2) -> free_vars t1 @ List.filter (fun v -> v <> x) (free_vars t2)
+    | Unit -> []
+    | Ref t -> free_vars t
+    | Deref t -> free_vars t
+    | Assign (t1, t2) -> free_vars t1 @ free_vars t2
+    | Adresse _ -> []
+    and free_vars_list (l: pterm listStand) : string list =
+        match l with 
+        |Empty -> []
+        |Cons (head,tail)-> (free_vars head) @ (free_vars_list tail) 
 
 
 (* 5 fonction de substitution *)
 let rec substitution (x : string) (n : pterm) (t : pterm) : pterm =
-  match t with
-  | Var y -> if y = x then n else t
-  | App (t1, t2) -> App (substitution x n t1, substitution x n t2)
-  | Abs (y, t1) ->
-      if y = x then Abs (y, t1) (* on fais rien car cette variable la est djea liée ici *)
-      else if List.mem y (free_vars n) then
+    match t with
+    | Var y -> if y = x then n else t
+    | App (t1, t2) -> App (substitution x n t1, substitution x n t2)
+    | Abs (y, t1) ->
+        if y = x then Abs (y, t1) (* on fais rien car cette variable la est djea liée ici *)
+        else if List.mem y (free_vars n) then
         let new_var = nouvelle_var () in
         let renamed_body = substitution y (Var new_var) t1 in
         Abs (new_var, substitution x n renamed_body)
-      else Abs (y, substitution x n t1)
-  | Int _ -> t
-  | Nil -> Nil
-  | List l -> List (substitution_list x n l)
-  | Head t -> Head (substitution x n t)
-  | Add (t1, t2) -> Add (substitution x n t1, substitution x n t2)
-  | Sub (t1, t2) -> Sub (substitution x n t1, substitution x n t2)
-  | Cons (t1, t2) -> Cons (substitution x n t1, substitution x n t2)
-  | Head t -> Head (substitution x n t)
-  | Tail t -> Tail (substitution x n t)
-  | IfZero (t1, t2, t3) -> IfZero (substitution x n t1, substitution x n t2, substitution x n t3)
-  | IfEmpty (t1, t2, t3) -> IfEmpty (substitution x n t1, substitution x n t2, substitution x n t3)
-  | Fix (t) -> Fix (substitution x n t)
-  |  Let (y, e1, e2) ->
-      let e1' = substitution x n e1 in
-      if y = x then
+        else Abs (y, substitution x n t1)
+    | Int _ -> t
+    | Nil -> Nil
+    | List l -> List (substitution_list x n l)
+    | Head t -> Head (substitution x n t)
+    | Add (t1, t2) -> Add (substitution x n t1, substitution x n t2)
+    | Sub (t1, t2) -> Sub (substitution x n t1, substitution x n t2)
+    | Cons (t1, t2) -> Cons (substitution x n t1, substitution x n t2)
+    | Head t -> Head (substitution x n t)
+    | Tail t -> Tail (substitution x n t)
+    | IfZero (t1, t2, t3) -> IfZero (substitution x n t1, substitution x n t2, substitution x n t3)
+    | IfEmpty (t1, t2, t3) -> IfEmpty (substitution x n t1, substitution x n t2, substitution x n t3)
+    | Fix (t) -> Fix (substitution x n t)
+    |  Let (y, e1, e2) ->
+        let e1' = substitution x n e1 in
+        if y = x then
         Let (y, e1', e2) 
-      else
+        else
         Let (y, e1', substitution x n e2)
-  and substitution_list (a : string) (b : pterm) (l : pterm listStand) = 
-    match l with 
-    | Empty -> Empty
-    | Cons (head, tail) -> Cons (substitution a b head,substitution_list a b tail)
+    | Unit -> Unit
+    | Ref t -> Ref (substitution x n t)
+    and substitution_list (a : string) (b : pterm) (l : pterm listStand) = 
+        match l with 
+        | Empty -> Empty
+        | Cons (head, tail) -> Cons (substitution a b head,substitution_list a b tail)
         
 (* let rec ltr_ctb_step (t : pterm) : pterm option =
   match t with
@@ -180,6 +198,13 @@ let rec simplify_term_with_limit (t : pterm) (limit : int) : pterm =
         simplify_term_with_limit t3 (limit - 1)
     | IfZero (t1, t2, t3) ->
         IfZero (simplify_term_with_limit t1 (limit - 1), t2, t3)
+    | IfEmpty (List Empty, t2, _) -> simplify_term_with_limit t2 (limit - 1)
+    | IfEmpty (List (Cons _), _, t3) -> simplify_term_with_limit t3 (limit - 1)
+    | IfEmpty (t1, t2, t3) ->
+        IfEmpty (simplify_term_with_limit t1 (limit - 1), t2, t3)
+    | Fix (Abs (x, body)) ->
+        let body' = substitution x (Fix (Abs (x, body))) body in
+        simplify_term_with_limit body' (limit - 1)
     | _ -> t
 
 and simplify_list_with_limit (l : pterm listStand) (limit : int) : pterm listStand =
@@ -204,91 +229,110 @@ match t with
 
 
 let rec ltr_ctb_step (t : pterm) : pterm option =
-  match t with
-  | Var _ -> None
-  | Abs (x, t1) ->
-      (match ltr_ctb_step t1 with
-       | Some t1' -> Some (Abs (x, t1'))
-       | None -> None)
-  | App (Abs (x, t1), v2) when is_value v2 ->
-      Some (substitution x v2 t1)
-  | App (t1, t2) ->
-      (match ltr_ctb_step t1 with
-       | Some t1' -> Some (App (t1', t2))
-       | None ->
-           (match ltr_ctb_step t2 with
+    match t with
+    | Var _ -> None
+    | Abs (x, t1) ->
+        (match ltr_ctb_step t1 with
+        | Some t1' -> Some (Abs (x, t1'))
+        | None -> None)
+    | App (Abs (x, t1), v2) when is_value v2 ->
+        Some (substitution x v2 t1)
+    | App (t1, t2) ->
+        (match ltr_ctb_step t1 with
+        | Some t1' -> Some (App (t1', t2))
+        | None ->
+            (match ltr_ctb_step t2 with
             | Some t2' -> Some (App (t1, t2'))
             | None -> None))
-  | Int _ -> None
-  | Add (Int n1, Int n2) -> Some (Int (n1 + n2))
-  | Add (t1, t2) when is_value t1 ->
-      (match ltr_ctb_step t2 with
-       | Some t2' -> Some (Add (t1, t2'))
-       | None -> None)
-  | Add (t1, t2) ->
-      (match ltr_ctb_step t1 with
-       | Some t1' -> Some (Add (t1', t2))
-       | None -> None)
-  | Sub (Int n1, Int n2) -> Some (Int (n1 - n2))
-  | Sub (t1, t2) when is_value t1 ->
-      (match ltr_ctb_step t2 with
-       | Some t2' -> Some (Sub (t1, t2'))
-       | None -> None)
-  | Sub (t1, t2) ->
-      (match ltr_ctb_step t1 with
-       | Some t1' -> Some (Sub (t1', t2))
-       | None -> None)
-  | Fix (Abs (x, body)) ->
-      let body' = substitution x (Fix (Abs (x, body))) body in
-      Some body'
-  | Fix m ->
-      (match ltr_ctb_step m with
-       | Some m' -> Some (Fix m')
-       | None -> failwith "Fix should be an abstraction")
-  | Cons (t1, t2) when is_value t1 ->
-      (match ltr_ctb_step t2 with
-       | Some t2' -> Some (Cons (t1, t2'))
-       | None -> None)
-  | Cons (t1, t2) ->
-      (match ltr_ctb_step t1 with
-       | Some t1' -> Some (Cons (t1', t2))
-       | None -> None)
-  | List l -> (
-      match ltr_ctb_step_list l with
-      | Some l' -> Some (List l')
-      | None -> None)
-  | Nil -> None
-  | Head (List (Cons (t1, _))) -> Some t1
-  | Head (List Empty) -> None
-  | Head t ->
-      (match ltr_ctb_step t with
-       | Some t' -> Some (Head t')
-       | None -> None)
-  | Tail (List (Cons (_, t2))) -> Some (List t2)
-  | Tail (List Empty) -> None
-  | Tail t ->
-      (match ltr_ctb_step t with
-       | Some t' -> Some (Tail t')
-       | None -> None)
-  | IfZero (Int 0, t2, _) -> Some t2
-  | IfZero (Int _, _, t3) -> Some t3
-  | IfZero (t1, t2, t3) ->
-      (match ltr_ctb_step t1 with
-       | Some t1' -> Some (IfZero (t1', t2, t3))
-       | None -> None)
-  | IfEmpty (List Empty, t2, _) -> Some t2
-  | IfEmpty (List (Cons _), _, t3) -> Some t3
-  | IfEmpty (t1, t2, t3) ->
-      (match ltr_ctb_step t1 with
-       | Some t1' -> Some (IfEmpty (t1', t2, t3))
-       | None -> None)
-  | Let (x, t1, t2) when is_value t1 ->
-      Some (substitution x t1 t2)
-  | Let (x, t1, t2) ->
-      (match ltr_ctb_step t1 with
-       | Some t1' -> Some (Let (x, t1', t2))
-       | None -> None)
-  | _ -> None
+    | Int _ -> None
+    | Add (Int n1, Int n2) -> Some (Int (n1 + n2))
+    | Add (t1, t2) when is_value t1 ->
+        (match ltr_ctb_step t2 with
+        | Some t2' -> Some (Add (t1, t2'))
+        | None -> None)
+    | Add (t1, t2) ->
+        (match ltr_ctb_step t1 with
+        | Some t1' -> Some (Add (t1', t2))
+        | None -> None)
+    | Sub (Int n1, Int n2) -> Some (Int (n1 - n2))
+    | Sub (t1, t2) when is_value t1 ->
+        (match ltr_ctb_step t2 with
+        | Some t2' -> Some (Sub (t1, t2'))
+        | None -> None)
+    | Sub (t1, t2) ->
+        (match ltr_ctb_step t1 with
+        | Some t1' -> Some (Sub (t1', t2))
+        | None -> None)
+    | Fix (Abs (x, body)) ->
+        let body' = substitution x (Fix (Abs (x, body))) body in
+        Some body'
+    | Fix m ->
+        (match ltr_ctb_step m with
+        | Some m' -> Some (Fix m')
+        | None -> failwith "Fix should be an abstraction")
+    | Cons (t1, t2) when is_value t1 ->
+        (match ltr_ctb_step t2 with
+        | Some t2' -> Some (Cons (t1, t2'))
+        | None -> None)
+    | Cons (t1, t2) ->
+        (match ltr_ctb_step t1 with
+        | Some t1' -> Some (Cons (t1', t2))
+        | None -> None)
+    | List l -> (
+        match ltr_ctb_step_list l with
+        | Some l' -> Some (List l')
+        | None -> None)
+    | Nil -> None
+    | Head (List (Cons (t1, _))) -> Some t1
+    | Head (List Empty) -> None
+    | Head t ->
+        (match ltr_ctb_step t with
+        | Some t' -> Some (Head t')
+        | None -> None)
+    | Tail (List (Cons (_, t2))) -> Some (List t2)
+    | Tail (List Empty) -> None
+    | Tail t ->
+        (match ltr_ctb_step t with
+        | Some t' -> Some (Tail t')
+        | None -> None)
+    | IfZero (Int 0, t2, _) -> Some t2
+    | IfZero (Int _, _, t3) -> Some t3
+    | IfZero (t1, t2, t3) ->
+        (match ltr_ctb_step t1 with
+        | Some t1' -> Some (IfZero (t1', t2, t3))
+        | None -> None)
+    | IfEmpty (List Empty, t2, _) -> Some t2
+    | IfEmpty (List (Cons _), _, t3) -> Some t3
+    | IfEmpty (t1, t2, t3) ->
+        (match ltr_ctb_step t1 with
+        | Some t1' -> Some (IfEmpty (t1', t2, t3))
+        | None -> None)
+    | Let (x, t1, t2) when is_value t1 ->
+        Some (substitution x t1 t2)
+    | Let (x, t1, t2) ->
+        (match ltr_ctb_step t1 with
+        | Some t1' -> Some (Let (x, t1', t2))
+        | None -> None)
+    | Unit -> None
+    | Deref e -> 
+      (match ltr_ctb_step e with
+        | Some e' -> Some (Deref e') (* Réduction de e avant déréférencement *)
+        | None -> None)
+        (* il manquerais le cas ou c'est une regions  *)
+    | Deref e -> 
+        (match ltr_ctb_step e with
+        | Some e' -> Some (Deref e') (* Réduction de e avant déréférencement *)
+        | None -> None)
+    (* ici aussi faudrais le cas concret ou c'est un entier et faire la gestion de mise a jour de la memoir *)
+    | Assign (t1, t2) -> 
+        (match ltr_ctb_step t1 with
+            | Some t1' -> Some (Assign (t1', t2)) (* Réduction de t1 *)
+            | None when is_value t1 -> 
+                (match ltr_ctb_step t2 with
+                | Some t2' -> Some (Assign (t1, t2')) (* Réduction de t2 *)
+                | None -> None)
+            | None -> None)
+    | _ -> None
 
   and ltr_ctb_step_list (l : pterm listStand) : pterm listStand option =
     match l with
